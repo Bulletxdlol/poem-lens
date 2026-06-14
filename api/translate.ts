@@ -1,7 +1,6 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { GoogleGenAI } from "@google/genai";
+export const config = { runtime: "edge", maxDuration: 60 };
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function extractGoogleRetryDelay(err: unknown): number | null {
   try {
@@ -16,7 +15,7 @@ function extractGoogleRetryDelay(err: unknown): number | null {
       return Math.ceil(parseFloat(retryInfo.retryDelay));
     }
   } catch {
-    // ignore parse failures
+    // ignore
   }
   return null;
 }
@@ -28,33 +27,6 @@ function isQuotaError(err: unknown): boolean {
     msg.includes("RESOURCE_EXHAUSTED") ||
     msg.includes("quota")
   );
-}
-
-async function callGeminiWithRetry(
-  ai: GoogleGenAI,
-  model: string,
-  contents: string,
-) {
-  const MAX_RETRIES = 3;
-  const BASE_DELAY_MS = 2_000;
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await ai.models.generateContent({ model, contents });
-    } catch (err: unknown) {
-      const isLast = attempt === MAX_RETRIES;
-      if (!isQuotaError(err) || isLast) throw err;
-
-      const hintSeconds = extractGoogleRetryDelay(err);
-      const backoffMs = hintSeconds
-        ? hintSeconds * 1000
-        : BASE_DELAY_MS * Math.pow(2, attempt);
-      const jitter = backoffMs * 0.1 * (Math.random() * 2 - 1);
-      await sleep(Math.round(backoffMs + jitter));
-    }
-  }
-
-  throw new Error("callGeminiWithRetry: exceeded max retries");
 }
 
 async function fetchPoetImage(poetName: string): Promise<string | null> {
@@ -76,17 +48,73 @@ async function fetchPoetImage(poetName: string): Promise<string | null> {
   }
 }
 
-async function translatePoem(input: {
-  poem: string;
-  source_lang: string;
-  target_lang: string;
-}) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return { status: 500, error: "GEMINI_API_KEY is not configured." };
+async function callGemini(apiKey: string, prompt: string): Promise<string> {
+  const MAX_RETRIES = 3;
+  const BASE_DELAY_MS = 2000;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      },
+    );
+
+    if (res.ok) {
+      const data = (await res.json()) as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+      };
+      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    }
+
+    const errText = await res.text();
+    const err = new Error(errText || `Gemini HTTP ${res.status}`);
+    const isLast = attempt === MAX_RETRIES;
+
+    if (!isQuotaError(err) || isLast) throw err;
+
+    const hintSeconds = extractGoogleRetryDelay(err);
+    const backoffMs = hintSeconds
+      ? hintSeconds * 1000
+      : BASE_DELAY_MS * Math.pow(2, attempt);
+    await sleep(Math.round(backoffMs));
   }
 
-  const { poem, source_lang, target_lang } = input;
+  throw new Error("Gemini request failed after retries");
+}
+
+export default async function handler(request: Request) {
+  if (request.method !== "POST") {
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return Response.json(
+      { error: "GEMINI_API_KEY is not configured." },
+      { status: 500 },
+    );
+  }
+
+  let body: { poem?: string; source_lang?: string; target_lang?: string };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const { poem, source_lang, target_lang } = body;
+  if (!poem || !source_lang || !target_lang) {
+    return Response.json(
+      { error: "poem, source_lang, and target_lang are required." },
+      { status: 400 },
+    );
+  }
+
   const sameLanguage =
     source_lang.trim().toLowerCase() === target_lang.trim().toLowerCase();
 
@@ -129,9 +157,7 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
 }`;
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await callGeminiWithRetry(ai, "gemini-2.5-flash", prompt);
-    const raw = response.text ?? "";
+    const raw = await callGemini(apiKey, prompt);
     const cleaned = raw
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```$/, "")
@@ -141,82 +167,31 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
     try {
       parsed = JSON.parse(cleaned) as Record<string, unknown>;
     } catch {
-      return {
-        status: 502,
-        error: "The AI returned an unexpected response. Please try again.",
-      };
+      return Response.json(
+        { error: "The AI returned an unexpected response. Please try again." },
+        { status: 502 },
+      );
     }
 
     const poetName =
       typeof parsed.poet_name === "string" ? parsed.poet_name : "";
     const poetImageUrl = await fetchPoetImage(poetName);
-    return { ...parsed, poet_image_url: poetImageUrl };
+    return Response.json({ ...parsed, poet_image_url: poetImageUrl });
   } catch (err: unknown) {
     if (isQuotaError(err)) {
       const hint = extractGoogleRetryDelay(err);
       const waitMsg = hint
         ? ` Try again in ${hint}s.`
         : " Please wait a moment and try again.";
-      return {
-        status: 429,
-        error: `Free-tier rate limit reached.${waitMsg}`,
-      };
+      return Response.json(
+        { error: `Free-tier rate limit reached.${waitMsg}` },
+        { status: 429 },
+      );
     }
 
-    return {
-      status: 502,
-      error: "Failed to contact Gemini API. Please try again.",
-    };
+    return Response.json(
+      { error: "Failed to contact Gemini API. Please try again." },
+      { status: 502 },
+    );
   }
 }
-
-function routePath(url: string | undefined): string {
-  const path = (url ?? "").split("?")[0] ?? "";
-  return path.replace(/\/+$/, "") || "/";
-}
-
-async function handler(req: VercelRequest, res: VercelResponse) {
-  const path = routePath(req.url);
-
-  if (path.endsWith("/healthz")) {
-    return res.status(200).json({ status: "ok" });
-  }
-
-  if (path.endsWith("/status")) {
-    return res.status(200).json({
-      hasServerKey: Boolean(process.env.GEMINI_API_KEY),
-    });
-  }
-
-  if (path.endsWith("/translate")) {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
-    }
-
-    const body = req.body as {
-      poem?: string;
-      source_lang?: string;
-      target_lang?: string;
-    };
-
-    const { poem, source_lang, target_lang } = body ?? {};
-
-    if (!poem || !source_lang || !target_lang) {
-      return res.status(400).json({
-        error: "poem, source_lang, and target_lang are required.",
-      });
-    }
-
-    const result = await translatePoem({ poem, source_lang, target_lang });
-
-    if ("error" in result && !("poet_image_url" in result)) {
-      return res.status(result.status).json({ error: result.error });
-    }
-
-    return res.status(200).json(result);
-  }
-
-  return res.status(404).json({ error: "Not found" });
-}
-
-export default handler;

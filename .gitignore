@@ -3,9 +3,6 @@
 # Vercel local metadata
 .vercel
 
-# Bundled serverless output (also committed for Vercel validation)
-/api/translate.js
-
 # compiled output
 dist
 tmp
