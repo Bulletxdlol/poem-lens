@@ -1,4 +1,4 @@
-import { translatePoem } from "./_lib/gemini";
+import { translatePoem, type TranslateFailure } from "./_lib/gemini";
 
 export async function POST(request: Request) {
   let body: {
@@ -24,8 +24,9 @@ export async function POST(request: Request) {
 
   const result = await translatePoem({ poem, source_lang, target_lang });
 
-  if ("error" in result && "status" in result) {
-    return Response.json({ error: result.error }, { status: result.status });
+  if ("error" in result && !("poet_image_url" in result)) {
+    const failure = result as TranslateFailure;
+    return Response.json({ error: failure.error }, { status: failure.status });
   }
 
   return Response.json(result);
