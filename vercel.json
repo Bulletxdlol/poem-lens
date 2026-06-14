@@ -5,7 +5,7 @@
   "outputDirectory": "artifacts/poem-app/dist/public",
   "framework": null,
   "functions": {
-    "api/translate.mjs": {
+    "api/translate.js": {
       "maxDuration": 60
     }
   },

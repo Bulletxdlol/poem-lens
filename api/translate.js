@@ -1,12 +1,10 @@
-export const config = { maxDuration: 60 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function sendJson(res, status, data) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(data));
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function extractGoogleRetryDelay(err) {
   try {
@@ -33,7 +31,6 @@ function isQuotaError(err) {
   );
 }
 
-/** Pull a JSON object out of Gemini text — handles fences, preamble, truncation. */
 function parseGeminiJson(raw) {
   if (!raw?.trim()) return null;
 
@@ -152,7 +149,7 @@ async function callGemini(apiKey, prompt) {
   throw new Error("Gemini request failed after retries");
 }
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
     sendJson(res, 405, { error: "Method not allowed" });
     return;
@@ -263,4 +260,4 @@ Your previous reply could not be parsed. Return ONLY one valid JSON object match
       error: "Failed to contact Gemini API. Please try again.",
     });
   }
-}
+};
