@@ -1,0 +1,124 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
+  --font-mono: var(--app-font-mono);
+}
+
+:root {
+  --app-font-sans: 'Inter', system-ui, sans-serif;
+  --app-font-serif: 'Playfair Display', Georgia, serif;
+  --app-font-mono: Menlo, monospace;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+  body { @apply antialiased; font-family: var(--app-font-sans); }
+}
+
+/* ── Keyframe animations ──────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Animation utilities ──────────────────────────────────────────────────── */
+.anim-fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.anim-fade-in {
+  animation: fadeIn 0.35s ease-out both;
+}
+
+.anim-slide-down {
+  animation: slideDown 0.3s ease-out both;
+}
+
+.anim-scale-in {
+  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Result panel entrance ────────────────────────────────────────────────── */
+.result-panel {
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Hover transitions ────────────────────────────────────────────────────── */
+.result-panel {
+  transition: box-shadow 250ms ease, transform 250ms ease;
+}
+
+.result-panel:hover {
+  box-shadow: 0 6px 28px rgba(26, 21, 35, 0.11) !important;
+  transform: translateY(-2px);
+}
+
+/* ── Language select appearance ───────────────────────────────────────────── */
+.lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: border-color 200ms, box-shadow 200ms;
+}
+
+.lang-select:focus {
+  border-color: rgba(212, 160, 23, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.13);
+  outline: none;
+}
+
+/* ── Smooth page transitions ──────────────────────────────────────────────── */
+a, button {
+  transition: color 200ms ease, background-color 200ms ease,
+              opacity 200ms ease, transform 150ms ease, box-shadow 200ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ── Textarea focus ring ──────────────────────────────────────────────────── */
+textarea:focus {
+  outline: none;
+}
+
+/* ── Page transition ──────────────────────────────────────────────────────── */
+@keyframes pageFade {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.anim-page-fade {
+  animation: pageFade 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Scrollbar (webkit) ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(184, 134, 11, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(184, 134, 11, 0.45);
+}

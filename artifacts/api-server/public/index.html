@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Poem Translator & Explainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">✦</span>
+        <span class="logo-text">Verse<em>Bridge</em></span>
+      </div>
+      <p class="tagline">Translate poetry. Preserve its soul.</p>
+    </div>
+  </header>
+
+  <main class="app-layout">
+    <!-- LEFT: Input -->
+    <section class="panel input-panel">
+      <div class="panel-header">
+        <h2>Your Poem</h2>
+        <p class="panel-sub">Paste any poem below and choose your languages.</p>
+      </div>
+
+      <div class="field-group">
+        <label for="poem-input">Poem Text</label>
+        <textarea
+          id="poem-input"
+          placeholder="Shall I compare thee to a summer's day?&#10;Thou art more lovely and more temperate..."
+          rows="12"
+        ></textarea>
+      </div>
+
+      <div class="lang-row">
+        <div class="field-group">
+          <label for="source-lang">Source Language</label>
+          <div class="select-wrap">
+            <select id="source-lang">
+              <option value="English">English</option>
+              <option value="French">French</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Italian">Italian</option>
+              <option value="German">German</option>
+              <option value="Portuguese">Portuguese</option>
+              <option value="Russian">Russian</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Chinese">Chinese</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Persian">Persian</option>
+              <option value="Turkish">Turkish</option>
+              <option value="Latin">Latin</option>
+              <option value="Greek">Greek</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="lang-arrow">→</div>
+
+        <div class="field-group">
+          <label for="target-lang">Target Language</label>
+          <div class="select-wrap">
+            <select id="target-lang">
+              <option value="French">French</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Italian">Italian</option>
+              <option value="German">German</option>
+              <option value="Portuguese">Portuguese</option>
+              <option value="Russian">Russian</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Chinese">Chinese</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Persian">Persian</option>
+              <option value="Turkish">Turkish</option>
+              <option value="Latin">Latin</option>
+              <option value="Greek">Greek</option>
+              <option value="English">English</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button id="translate-btn" class="translate-btn">
+        <span class="btn-text">Translate Poem</span>
+        <span class="btn-spinner" aria-hidden="true"></span>
+      </button>
+
+      <div id="error-box" class="error-box hidden" role="alert"></div>
+    </section>
+
+    <!-- RIGHT: Output -->
+    <section class="output-section">
+      <div class="output-grid">
+
+        <!-- Translated Poem -->
+        <div class="out-panel translation-panel">
+          <div class="out-header">
+            <span class="out-icon">📜</span>
+            <h3>Translated Poem</h3>
+          </div>
+          <div id="translated-poem" class="out-body poem-body placeholder-text">
+            Your translated poem will appear here…
+          </div>
+          <div id="lang-badge" class="lang-badge hidden"></div>
+        </div>
+
+        <!-- Explanation -->
+        <div class="out-panel explanation-panel">
+          <div class="out-header">
+            <span class="out-icon">💡</span>
+            <h3>Theme &amp; Explanation</h3>
+          </div>
+          <div id="explanation" class="out-body placeholder-text">
+            The AI's analysis of the poem's themes and translation choices will appear here…
+          </div>
+        </div>
+
+        <!-- Cultural Notes -->
+        <div class="out-panel cultural-panel">
+          <div class="out-header">
+            <span class="out-icon">🌍</span>
+            <h3>Cultural Notes</h3>
+          </div>
+          <ul id="cultural-notes" class="out-body cultural-list placeholder-text">
+            <li>Cultural context and linguistic nuances will appear here…</li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Powered by Google Gemini &nbsp;·&nbsp; Every poem is a bridge between worlds.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
