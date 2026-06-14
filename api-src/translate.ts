@@ -1,4 +1,4 @@
-import { GoogleGenAI, type GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -6,9 +6,7 @@ function extractGoogleRetryDelay(err: unknown): number | null {
   try {
     const msg = err instanceof Error ? err.message : String(err);
     const json = JSON.parse(msg) as {
-      error?: {
-        details?: { "@type"?: string; retryDelay?: string }[];
-      };
+      error?: { details?: { "@type"?: string; retryDelay?: string }[] };
     };
     const retryInfo = json?.error?.details?.find(
       (d) => d["@type"] === "type.googleapis.com/google.rpc.RetryInfo",
@@ -35,19 +33,15 @@ async function callGeminiWithRetry(
   ai: GoogleGenAI,
   model: string,
   contents: string,
-): Promise<GenerateContentResponse> {
+) {
   const MAX_RETRIES = 3;
   const BASE_DELAY_MS = 2_000;
-  const proactiveDelay = process.env.VERCEL ? 0 : 2_000;
-
-  await sleep(proactiveDelay);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       return await ai.models.generateContent({ model, contents });
     } catch (err: unknown) {
       const isLast = attempt === MAX_RETRIES;
-
       if (!isQuotaError(err) || isLast) throw err;
 
       const hintSeconds = extractGoogleRetryDelay(err);
@@ -55,9 +49,7 @@ async function callGeminiWithRetry(
         ? hintSeconds * 1000
         : BASE_DELAY_MS * Math.pow(2, attempt);
       const jitter = backoffMs * 0.1 * (Math.random() * 2 - 1);
-      const waitMs = Math.round(backoffMs + jitter);
-
-      await sleep(waitMs);
+      await sleep(Math.round(backoffMs + jitter));
     }
   }
 
@@ -83,30 +75,14 @@ async function fetchPoetImage(poetName: string): Promise<string | null> {
   }
 }
 
-export type TranslateInput = {
+async function translatePoem(input: {
   poem: string;
   source_lang: string;
   target_lang: string;
-};
-
-export type TranslateSuccess = Record<string, unknown> & {
-  poet_image_url: string | null;
-};
-
-export type TranslateFailure = {
-  status: number;
-  error: string;
-};
-
-export async function translatePoem(
-  input: TranslateInput,
-): Promise<TranslateSuccess | TranslateFailure> {
+}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return {
-      status: 500,
-      error: "GEMINI_API_KEY is not configured.",
-    };
+    return { status: 500, error: "GEMINI_API_KEY is not configured." };
   }
 
   const { poem, source_lang, target_lang } = input;
@@ -154,7 +130,6 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await callGeminiWithRetry(ai, "gemini-2.5-flash", prompt);
-
     const raw = response.text ?? "";
     const cleaned = raw
       .replace(/^```(?:json)?\s*/i, "")
@@ -193,3 +168,46 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
     };
   }
 }
+
+type VercelRequest = {
+  method?: string;
+  body?: {
+    poem?: string;
+    source_lang?: string;
+    target_lang?: string;
+  };
+};
+
+type VercelResponse = {
+  status: (code: number) => VercelResponse;
+  json: (body: unknown) => void;
+};
+
+async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+
+  const poem = req.body?.poem;
+  const source_lang = req.body?.source_lang;
+  const target_lang = req.body?.target_lang;
+
+  if (!poem || !source_lang || !target_lang) {
+    res.status(400).json({
+      error: "poem, source_lang, and target_lang are required.",
+    });
+    return;
+  }
+
+  const result = await translatePoem({ poem, source_lang, target_lang });
+
+  if ("error" in result && !("poet_image_url" in result)) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  res.status(200).json(result);
+}
+
+export = handler;
