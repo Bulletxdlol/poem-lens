@@ -1,4 +1,10 @@
-export const config = { runtime: "edge", maxDuration: 60 };
+export const config = { maxDuration: 60 };
+
+function sendJson(res, status, data) {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(data));
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -146,32 +152,30 @@ async function callGemini(apiKey, prompt) {
   throw new Error("Gemini request failed after retries");
 }
 
-export default async function handler(request) {
-  if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed" }, { status: 405 });
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return Response.json(
-      { error: "GEMINI_API_KEY is not configured." },
-      { status: 500 },
-    );
+    sendJson(res, 500, { error: "GEMINI_API_KEY is not configured." });
+    return;
   }
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  const body = req.body;
+  if (!body || typeof body !== "object") {
+    sendJson(res, 400, { error: "Invalid JSON body." });
+    return;
   }
 
   const { poem, source_lang, target_lang } = body;
   if (!poem || !source_lang || !target_lang) {
-    return Response.json(
-      { error: "poem, source_lang, and target_lang are required." },
-      { status: 400 },
-    );
+    sendJson(res, 400, {
+      error: "poem, source_lang, and target_lang are required.",
+    });
+    return;
   }
 
   const sameLanguage =
@@ -228,19 +232,17 @@ Your previous reply could not be parsed. Return ONLY one valid JSON object match
     }
 
     if (!parsed) {
-      return Response.json(
-        {
-          error:
-            "The AI returned an unexpected response. Please try again with a shorter poem, or retry in a moment.",
-        },
-        { status: 502 },
-      );
+      sendJson(res, 502, {
+        error:
+          "The AI returned an unexpected response. Please try again with a shorter poem, or retry in a moment.",
+      });
+      return;
     }
 
     const poetName =
       typeof parsed.poet_name === "string" ? parsed.poet_name : "";
     const poetImageUrl = await fetchPoetImage(poetName);
-    return Response.json({
+    sendJson(res, 200, {
       ...parsed,
       original_poem: poem,
       poet_image_url: poetImageUrl,
@@ -251,15 +253,14 @@ Your previous reply could not be parsed. Return ONLY one valid JSON object match
       const waitMsg = hint
         ? ` Try again in ${hint}s.`
         : " Please wait a moment and try again.";
-      return Response.json(
-        { error: `Free-tier rate limit reached.${waitMsg}` },
-        { status: 429 },
-      );
+      sendJson(res, 429, {
+        error: `Free-tier rate limit reached.${waitMsg}`,
+      });
+      return;
     }
 
-    return Response.json(
-      { error: "Failed to contact Gemini API. Please try again." },
-      { status: 502 },
-    );
+    sendJson(res, 502, {
+      error: "Failed to contact Gemini API. Please try again.",
+    });
   }
 }
