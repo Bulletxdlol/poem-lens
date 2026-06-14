@@ -4,10 +4,5 @@
   "buildCommand": "pnpm run vercel-build",
   "outputDirectory": "artifacts/poem-app/dist/public",
   "framework": null,
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
-  "functions": {
-    "api/translate.js": {
-      "maxDuration": 60
-    }
-  }
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
