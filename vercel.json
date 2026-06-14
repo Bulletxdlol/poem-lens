@@ -4,10 +4,7 @@
   "buildCommand": "pnpm --filter @workspace/poem-app run build",
   "outputDirectory": "artifacts/poem-app/dist/public",
   "framework": null,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "functions": {
     "api/translate.ts": {
       "maxDuration": 60

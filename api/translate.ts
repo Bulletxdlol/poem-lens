@@ -1,33 +1,36 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { translatePoem, type TranslateFailure } from "./_lib/gemini";
 
-export async function POST(request: Request) {
-  let body: {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+
+  const body = req.body as {
     poem?: string;
     source_lang?: string;
     target_lang?: string;
-  };
+  } | undefined;
 
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
-
-  const { poem, source_lang, target_lang } = body;
+  const poem = body?.poem;
+  const source_lang = body?.source_lang;
+  const target_lang = body?.target_lang;
 
   if (!poem || !source_lang || !target_lang) {
-    return Response.json(
-      { error: "poem, source_lang, and target_lang are required." },
-      { status: 400 },
-    );
+    res.status(400).json({
+      error: "poem, source_lang, and target_lang are required.",
+    });
+    return;
   }
 
   const result = await translatePoem({ poem, source_lang, target_lang });
 
   if ("error" in result && !("poet_image_url" in result)) {
     const failure = result as TranslateFailure;
-    return Response.json({ error: failure.error }, { status: failure.status });
+    res.status(failure.status).json({ error: failure.error });
+    return;
   }
 
-  return Response.json(result);
+  res.status(200).json(result);
 }
