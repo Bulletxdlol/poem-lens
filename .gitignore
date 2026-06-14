@@ -3,7 +3,7 @@
 # Vercel local metadata
 .vercel
 
-# Bundled serverless output (built during vercel-build)
+# Bundled serverless output (also committed for Vercel validation)
 /api/translate.js
 
 # compiled output

@@ -1,8 +1,19 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm run vercel-build",
-  "outputDirectory": "artifacts/poem-app/dist/public",
-  "framework": null,
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "builds": [
+    { "src": "api/index.js", "use": "@vercel/node" },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "artifacts/poem-app/dist/public" }
+    }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/api/status", "dest": "/api/index.js" },
+    { "src": "/api/healthz", "dest": "/api/index.js" },
+    { "src": "/api/translate", "dest": "/api/index.js" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
 }

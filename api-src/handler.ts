@@ -1,3 +1,4 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { GoogleGenAI } from "@google/genai";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -169,89 +170,53 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
   }
 }
 
-type VercelRequest = {
-  method?: string;
-  body?: {
-    poem?: string;
-    source_lang?: string;
-    target_lang?: string;
-  };
-  on?: (event: string, cb: (...args: unknown[]) => void) => void;
-};
-
-type VercelResponse = {
-  statusCode: number;
-  setHeader: (name: string, value: string) => void;
-  end: (body: string) => void;
-};
-
-function sendJson(res: VercelResponse, statusCode: number, data: unknown) {
-  res.statusCode = statusCode;
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify(data));
-}
-
-function readBody(req: VercelRequest): Promise<{
-  poem?: string;
-  source_lang?: string;
-  target_lang?: string;
-}> {
-  if (req.body) return Promise.resolve(req.body);
-
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on?.("data", (chunk) => {
-      data += String(chunk);
-    });
-    req.on?.("end", () => {
-      try {
-        resolve(data ? JSON.parse(data) : {});
-      } catch {
-        reject(new Error("Invalid JSON body"));
-      }
-    });
-    req.on?.("error", reject);
-  });
+function routePath(url: string | undefined): string {
+  const path = (url ?? "").split("?")[0] ?? "";
+  return path.replace(/\/+$/, "") || "/";
 }
 
 async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    sendJson(res, 405, { error: "Method not allowed" });
-    return;
+  const path = routePath(req.url);
+
+  if (path.endsWith("/healthz")) {
+    return res.status(200).json({ status: "ok" });
   }
 
-  let body: {
-    poem?: string;
-    source_lang?: string;
-    target_lang?: string;
-  };
-
-  try {
-    body = await readBody(req);
-  } catch {
-    sendJson(res, 400, { error: "Invalid JSON body." });
-    return;
-  }
-
-  const poem = body?.poem;
-  const source_lang = body?.source_lang;
-  const target_lang = body?.target_lang;
-
-  if (!poem || !source_lang || !target_lang) {
-    sendJson(res, 400, {
-      error: "poem, source_lang, and target_lang are required.",
+  if (path.endsWith("/status")) {
+    return res.status(200).json({
+      hasServerKey: Boolean(process.env.GEMINI_API_KEY),
     });
-    return;
   }
 
-  const result = await translatePoem({ poem, source_lang, target_lang });
+  if (path.endsWith("/translate")) {
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method not allowed" });
+    }
 
-  if ("error" in result && !("poet_image_url" in result)) {
-    sendJson(res, result.status, { error: result.error });
-    return;
+    const body = req.body as {
+      poem?: string;
+      source_lang?: string;
+      target_lang?: string;
+    };
+
+    const { poem, source_lang, target_lang } = body ?? {};
+
+    if (!poem || !source_lang || !target_lang) {
+      return res.status(400).json({
+        error: "poem, source_lang, and target_lang are required.",
+      });
+    }
+
+    const result = await translatePoem({ poem, source_lang, target_lang });
+
+    if ("error" in result && !("poet_image_url" in result)) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    return res.status(200).json(result);
   }
 
-  sendJson(res, 200, result);
+  return res.status(404).json({ error: "Not found" });
 }
 
-export = handler;
+export default handler;
