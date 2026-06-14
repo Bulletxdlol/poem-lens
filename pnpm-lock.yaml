@@ -152,6 +152,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@google/genai':
+        specifier: ^2.8.0
+        version: 2.8.0
     devDependencies:
       prettier:
         specifier: ^3.8.3

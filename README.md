@@ -72,6 +72,21 @@ See `.env.example` for the full list.
 | `pnpm --filter @workspace/api-server run dev` | Run API server |
 | `pnpm --filter @workspace/poem-app run dev` | Run frontend |
 
+## Deploying on Vercel
+
+This repo is configured for [Vercel](https://vercel.com): the React app is served as static files and `/api/*` runs as serverless functions.
+
+1. Push the repo to GitHub.
+2. In Vercel, **Add New Project** → import your GitHub repo.
+3. Leave the detected settings as-is (`vercel.json` handles build/output).
+4. Add an environment variable:
+   - `GEMINI_API_KEY` = your [Google Gemini API key](https://aistudio.google.com/apikey)
+5. Deploy.
+
+Optional env vars: `BASE_PATH=/` (default).
+
+**Note:** Poem translation calls Gemini and can take 15–30 seconds. Vercel Hobby allows up to 10s per function; **Pro** allows up to 60s (configured in `vercel.json`). If translations time out on Hobby, upgrade to Pro or host the API elsewhere.
+
 ## Deploying on Replit
 
 Set `GEMINI_API_KEY` in **Replit Secrets** (Tools → Secrets). Do not commit API keys to the repository.

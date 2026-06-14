@@ -31,21 +31,16 @@ echo  Poem Lens - starting local dev environment
 echo  -------------------------------------------
 echo.
 
-call :is_listening 8080
-if errorlevel 1 (
-  echo Starting API server on port 8080...
-  start "Poem Lens API" /D "%ROOT%" cmd /k pnpm --filter @workspace/api-server run dev
-) else (
-  echo API server already running on port 8080.
-)
+echo Restarting servers so .env changes are picked up...
+call :stop_port 8080
+call :stop_port 25973
+ping 127.0.0.1 -n 3 >nul
 
-call :is_listening 25973
-if errorlevel 1 (
-  echo Starting frontend on port 25973...
-  start "Poem Lens App" /D "%ROOT%" cmd /k pnpm --filter @workspace/poem-app run dev
-) else (
-  echo Frontend already running on port 25973.
-)
+echo Starting API server on port 8080...
+start "Poem Lens API" /D "%ROOT%" cmd /k pnpm --filter @workspace/api-server run dev
+
+echo Starting frontend on port 25973...
+start "Poem Lens App" /D "%ROOT%" cmd /k pnpm --filter @workspace/poem-app run dev
 
 echo.
 echo Waiting for the website to be ready...
@@ -80,6 +75,12 @@ exit /b 0
 :is_listening
 netstat -ano | findstr ":%~1 " | findstr "LISTENING" >nul 2>&1
 if errorlevel 1 exit /b 1
+exit /b 0
+
+:stop_port
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%~1 " ^| findstr "LISTENING"') do (
+  taskkill /PID %%a /F >nul 2>&1
+)
 exit /b 0
 
 :open_chrome
