@@ -48,6 +48,67 @@ function isQuotaError(err: unknown): boolean {
   );
 }
 
+function parseGeminiJson(raw: string): Record<string, unknown> | null {
+  if (!raw?.trim()) return null;
+
+  let text = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const tryParse = (candidate: string): Record<string, unknown> | null => {
+    try {
+      return JSON.parse(candidate) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
+  let parsed = tryParse(text);
+  if (parsed) return parsed;
+
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        parsed = tryParse(text.slice(start, i + 1));
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+const GEMINI_GENERATION_CONFIG = {
+  maxOutputTokens: 8192,
+  temperature: 0.4,
+  responseMimeType: "application/json" as const,
+};
+
 /**
  * Call Gemini with exponential back-off on 429 errors.
  *
@@ -72,7 +133,11 @@ async function callGeminiWithRetry(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await ai.models.generateContent({ model, contents });
+      return await ai.models.generateContent({
+        model,
+        contents,
+        config: GEMINI_GENERATION_CONFIG,
+      });
     } catch (err: unknown) {
       const isLast = attempt === MAX_RETRIES;
 
@@ -170,7 +235,7 @@ ${poem}
 Respond with ONLY a valid JSON object — no markdown, no code fences, no commentary. The object must exactly match this structure:
 
 {
-  "original_poem": "<exact text of the poem as provided>",
+  "original_poem": "",
   "source_language": "<detected or given source language>",
   "target_language": "<target language>",
   "translated_poem": "<the poetic translation, or empty string if same language>",
@@ -187,23 +252,32 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await callGeminiWithRetry(ai, "gemini-2.5-flash", prompt, req.log);
+    let response = await callGeminiWithRetry(ai, "gemini-2.5-flash", prompt, req.log);
 
-    const raw = response.text ?? "";
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    let raw = response.text ?? "";
+    let parsed = parseGeminiJson(raw);
 
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(cleaned) as Record<string, unknown>;
-    } catch {
+    if (!parsed) {
+      const retryPrompt = `${prompt}
+
+Your previous reply could not be parsed. Return ONLY one valid JSON object matching the schema above. No markdown, no code fences, no text before or after the JSON. Escape newlines inside strings as \\n.`;
+      response = await callGeminiWithRetry(ai, "gemini-2.5-flash", retryPrompt, req.log);
+      raw = response.text ?? "";
+      parsed = parseGeminiJson(raw);
+    }
+
+    if (!parsed) {
       req.log.error({ raw }, "Failed to parse Gemini JSON response");
-      res.status(502).json({ error: "The AI returned an unexpected response. Please try again." });
+      res.status(502).json({
+        error:
+          "The AI returned an unexpected response. Please try again with a shorter poem, or retry in a moment.",
+      });
       return;
     }
 
     const poetName = typeof parsed.poet_name === "string" ? parsed.poet_name : "";
     const poetImageUrl = await fetchPoetImage(poetName);
-    res.json({ ...parsed, poet_image_url: poetImageUrl });
+    res.json({ ...parsed, original_poem: poem, poet_image_url: poetImageUrl });
   } catch (err: unknown) {
     req.log.error({ err }, "Gemini API call failed after retries");
     if (isQuotaError(err)) {

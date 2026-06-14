@@ -27,6 +27,68 @@ function isQuotaError(err) {
   );
 }
 
+/** Pull a JSON object out of Gemini text — handles fences, preamble, truncation. */
+function parseGeminiJson(raw) {
+  if (!raw?.trim()) return null;
+
+  let text = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const tryParse = (candidate) => {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  };
+
+  let parsed = tryParse(text);
+  if (parsed) return parsed;
+
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        parsed = tryParse(text.slice(start, i + 1));
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+const GEMINI_GENERATION_CONFIG = {
+  maxOutputTokens: 8192,
+  temperature: 0.4,
+  responseMimeType: "application/json",
+};
+
 async function fetchPoetImage(poetName) {
   if (!poetName || poetName.toLowerCase() === "unknown") return null;
   try {
@@ -58,6 +120,7 @@ async function callGemini(apiKey, prompt) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: GEMINI_GENERATION_CONFIG,
         }),
       },
     );
@@ -137,7 +200,7 @@ ${poem}
 Respond with ONLY a valid JSON object — no markdown, no code fences, no commentary. The object must exactly match this structure:
 
 {
-  "original_poem": "<exact text of the poem as provided>",
+  "original_poem": "",
   "source_language": "<detected or given source language>",
   "target_language": "<target language>",
   "translated_poem": "<the poetic translation, or empty string if same language>",
@@ -153,18 +216,23 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
 }`;
 
   try {
-    const raw = await callGemini(apiKey, prompt);
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/, "")
-      .trim();
+    let raw = await callGemini(apiKey, prompt);
+    let parsed = parseGeminiJson(raw);
 
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
+    if (!parsed) {
+      const retryPrompt = `${prompt}
+
+Your previous reply could not be parsed. Return ONLY one valid JSON object matching the schema above. No markdown, no code fences, no text before or after the JSON. Escape newlines inside strings as \\n.`;
+      raw = await callGemini(apiKey, retryPrompt);
+      parsed = parseGeminiJson(raw);
+    }
+
+    if (!parsed) {
       return Response.json(
-        { error: "The AI returned an unexpected response. Please try again." },
+        {
+          error:
+            "The AI returned an unexpected response. Please try again with a shorter poem, or retry in a moment.",
+        },
         { status: 502 },
       );
     }
@@ -172,7 +240,11 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
     const poetName =
       typeof parsed.poet_name === "string" ? parsed.poet_name : "";
     const poetImageUrl = await fetchPoetImage(poetName);
-    return Response.json({ ...parsed, poet_image_url: poetImageUrl });
+    return Response.json({
+      ...parsed,
+      original_poem: poem,
+      poet_image_url: poetImageUrl,
+    });
   } catch (err) {
     if (isQuotaError(err)) {
       const hint = extractGoogleRetryDelay(err);
