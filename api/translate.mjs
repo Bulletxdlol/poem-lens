@@ -1,13 +1,11 @@
 export const config = { runtime: "edge", maxDuration: 60 };
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function extractGoogleRetryDelay(err: unknown): number | null {
+function extractGoogleRetryDelay(err) {
   try {
     const msg = err instanceof Error ? err.message : String(err);
-    const json = JSON.parse(msg) as {
-      error?: { details?: { "@type"?: string; retryDelay?: string }[] };
-    };
+    const json = JSON.parse(msg);
     const retryInfo = json?.error?.details?.find(
       (d) => d["@type"] === "type.googleapis.com/google.rpc.RetryInfo",
     );
@@ -20,7 +18,7 @@ function extractGoogleRetryDelay(err: unknown): number | null {
   return null;
 }
 
-function isQuotaError(err: unknown): boolean {
+function isQuotaError(err) {
   const msg = err instanceof Error ? err.message : String(err);
   return (
     msg.includes("429") ||
@@ -29,7 +27,7 @@ function isQuotaError(err: unknown): boolean {
   );
 }
 
-async function fetchPoetImage(poetName: string): Promise<string | null> {
+async function fetchPoetImage(poetName) {
   if (!poetName || poetName.toLowerCase() === "unknown") return null;
   try {
     const slug = encodeURIComponent(poetName.replace(/ /g, "_"));
@@ -41,14 +39,14 @@ async function fetchPoetImage(poetName: string): Promise<string | null> {
       },
     );
     if (!res.ok) return null;
-    const data = (await res.json()) as { thumbnail?: { source?: string } };
+    const data = await res.json();
     return data?.thumbnail?.source ?? null;
   } catch {
     return null;
   }
 }
 
-async function callGemini(apiKey: string, prompt: string): Promise<string> {
+async function callGemini(apiKey, prompt) {
   const MAX_RETRIES = 3;
   const BASE_DELAY_MS = 2000;
 
@@ -65,9 +63,7 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
     );
 
     if (res.ok) {
-      const data = (await res.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
-      };
+      const data = await res.json();
       return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     }
 
@@ -87,7 +83,7 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
   throw new Error("Gemini request failed after retries");
 }
 
-export default async function handler(request: Request) {
+export default async function handler(request) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
@@ -100,9 +96,9 @@ export default async function handler(request: Request) {
     );
   }
 
-  let body: { poem?: string; source_lang?: string; target_lang?: string };
+  let body;
   try {
-    body = (await request.json()) as typeof body;
+    body = await request.json();
   } catch {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
@@ -163,9 +159,9 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
       .replace(/\s*```$/, "")
       .trim();
 
-    let parsed: Record<string, unknown>;
+    let parsed;
     try {
-      parsed = JSON.parse(cleaned) as Record<string, unknown>;
+      parsed = JSON.parse(cleaned);
     } catch {
       return Response.json(
         { error: "The AI returned an unexpected response. Please try again." },
@@ -177,7 +173,7 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no commen
       typeof parsed.poet_name === "string" ? parsed.poet_name : "";
     const poetImageUrl = await fetchPoetImage(poetName);
     return Response.json({ ...parsed, poet_image_url: poetImageUrl });
-  } catch (err: unknown) {
+  } catch (err) {
     if (isQuotaError(err)) {
       const hint = extractGoogleRetryDelay(err);
       const waitMsg = hint
