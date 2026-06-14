@@ -176,25 +176,69 @@ type VercelRequest = {
     source_lang?: string;
     target_lang?: string;
   };
+  on?: (event: string, cb: (...args: unknown[]) => void) => void;
 };
 
 type VercelResponse = {
-  status: (code: number) => VercelResponse;
-  json: (body: unknown) => void;
+  statusCode: number;
+  setHeader: (name: string, value: string) => void;
+  end: (body: string) => void;
 };
+
+function sendJson(res: VercelResponse, statusCode: number, data: unknown) {
+  res.statusCode = statusCode;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(data));
+}
+
+function readBody(req: VercelRequest): Promise<{
+  poem?: string;
+  source_lang?: string;
+  target_lang?: string;
+}> {
+  if (req.body) return Promise.resolve(req.body);
+
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on?.("data", (chunk) => {
+      data += String(chunk);
+    });
+    req.on?.("end", () => {
+      try {
+        resolve(data ? JSON.parse(data) : {});
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    req.on?.("error", reject);
+  });
+}
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
+    sendJson(res, 405, { error: "Method not allowed" });
     return;
   }
 
-  const poem = req.body?.poem;
-  const source_lang = req.body?.source_lang;
-  const target_lang = req.body?.target_lang;
+  let body: {
+    poem?: string;
+    source_lang?: string;
+    target_lang?: string;
+  };
+
+  try {
+    body = await readBody(req);
+  } catch {
+    sendJson(res, 400, { error: "Invalid JSON body." });
+    return;
+  }
+
+  const poem = body?.poem;
+  const source_lang = body?.source_lang;
+  const target_lang = body?.target_lang;
 
   if (!poem || !source_lang || !target_lang) {
-    res.status(400).json({
+    sendJson(res, 400, {
       error: "poem, source_lang, and target_lang are required.",
     });
     return;
@@ -203,11 +247,11 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   const result = await translatePoem({ poem, source_lang, target_lang });
 
   if ("error" in result && !("poet_image_url" in result)) {
-    res.status(result.status).json({ error: result.error });
+    sendJson(res, result.status, { error: result.error });
     return;
   }
 
-  res.status(200).json(result);
+  sendJson(res, 200, result);
 }
 
 export = handler;
